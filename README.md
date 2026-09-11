@@ -14,6 +14,7 @@
 | 🌐 **[What We Are Building — Project Vision & System Overview](docs/PROJECT_VISION_AND_SYSTEM_OVERVIEW.md)** | Full breakdown of SIH 26145, the unidirectional data diode problem, the 6 threat vectors, the dual-layer AI (Rules + NJ-ODE), and end-to-end architecture. |
 | 💻 **[Frontend Architecture & Operations Guide](docs/FRONTEND_ARCHITECTURE_AND_GUIDE.md)** | In-depth guide to the React 19 frontend, directory structure, how real-time Supabase streaming works, timestamp sorting, notifications, and local startup steps. |
 | 🗄️ **[Database Construction & Schema](docs/DATABASE_CONSTRUCTION_GUIDE.md)** | Supabase PostgreSQL schema, table contracts (`alerts`, `metrics`, `health`), indices, and Row-Level Security. |
+| 🚨 **[How to Add Alerts — Ingestion API Guide](docs/HOW_TO_ADD_ALERTS.md)** | Complete guide to sending alerts via Python, JavaScript, cURL, or browser with zero required parameters. |
 | 📡 **[Supabase Data Insertion Guide](docs/SUPABASE_DATA_INSERTION.md)** | Step-by-step instructions for pushing alerts via REST APIs, Python ingest scripts, or the frontend simulator. |
 
 ---
@@ -90,10 +91,92 @@ Vercel automatically compiles the `frontend/` package and deploys the production
 
 ---
 
+## 🌐 Vercel Serverless API — Zero-Config Row Ingestion
+
+You can create and insert new alert rows into the Supabase database directly via Vercel Serverless Functions **with ZERO additional info required** (intelligent schema defaults are automatically generated).
+
+### Endpoints
+- **`POST /api/create-alert`**: Creates a new alert row (accepts optional JSON body with overrides or `{}` for full defaults).
+- **`GET /api/create-alert`**: Creates a new alert row directly via GET (supports optional query params like `?severity=CRITICAL&threat_class=syn_flood`).
+- **`GET /api/alerts`**: Fetches the latest 50 alerts from Supabase (or creates an alert if `?create=true`).
+
+---
+
+### 1. Zero-Config Usage (No extra info needed)
+
+#### 🐍 From Python:
+Run the built-in zero-dependency script:
+```bash
+python scripts/create_alert.py
+```
+Or in any Python script using the standard library:
+```python
+import urllib.request, json
+
+# Creates a realistic alert row with zero additional info
+req = urllib.request.Request(
+    "https://<your-vercel-domain>.vercel.app/api/create-alert",
+    data=b"{}",
+    headers={"Content-Type": "application/json"},
+    method="POST"
+)
+with urllib.request.urlopen(req) as resp:
+    print(json.loads(resp.read().decode("utf-8")))
+```
+
+#### ⚡ From JavaScript / Node.js:
+Run the built-in script:
+```bash
+node scripts/create_alert.js
+```
+Or in any JS / browser application:
+```javascript
+const res = await fetch('https://<your-vercel-domain>.vercel.app/api/create-alert', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({}) // Zero info required!
+});
+const data = await res.json();
+console.log('Created alert:', data.alert);
+```
+
+#### 💻 From cURL / Command Line:
+```bash
+# POST with zero payload:
+curl -X POST https://<your-vercel-domain>.vercel.app/api/create-alert
+
+# GET in browser or curl:
+curl https://<your-vercel-domain>.vercel.app/api/create-alert
+```
+
+---
+
+### 2. Custom Overrides (Optional)
+
+You can selectively pass any field you want; the API will preserve your values and generate valid defaults for all remaining schema columns:
+
+```bash
+# Python:
+python scripts/create_alert.py --threat botnet_c2_beacon --severity CRITICAL --src 10.0.0.99
+
+# Node.js:
+node scripts/create_alert.js --threat data_exfiltration --severity CRITICAL
+
+# cURL:
+curl -X POST https://<your-vercel-domain>.vercel.app/api/create-alert \
+  -H "Content-Type: application/json" \
+  -d '{"threat_class":"volumetric_ddos","severity":"CRITICAL","src_ip":"192.168.1.100"}'
+```
+
+---
+
 ## 📁 Repository Structure
 
 ```
 zeroday-vercel/
+├── api/
+│   ├── create-alert.js             # Vercel Serverless Function: Zero-config alert row creation
+│   └── alerts.js                   # Vercel Serverless Function: REST alerts endpoint
 ├── database/
 │   └── supabase_schema.sql         # Production Supabase PostgreSQL schema
 ├── docs/
@@ -110,7 +193,10 @@ zeroday-vercel/
 │   ├── package.json                # Frontend dependencies (React 19, Vite, Recharts, Supabase)
 │   ├── vite.config.ts              # Bundler configuration
 │   └── vercel.json                 # SPA client-side rewrite rules
+├── scripts/
+│   ├── create_alert.py             # Universal Python client (zero dependencies)
+│   └── create_alert.js             # Universal Node.js / JS client
 ├── package.json                    # Root build runner for Vercel
-├── vercel.json                     # Vercel deployment root configuration
+├── vercel.json                     # Vercel deployment root configuration & API routing
 └── README.md                       # Main project portal
 ```
