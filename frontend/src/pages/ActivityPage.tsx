@@ -34,6 +34,8 @@ export function ActivityPage() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
 
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+
   useEffect(() => {
     let alive = true;
     activityService.list()
@@ -44,12 +46,20 @@ export function ActivityPage() {
 
   const filtered = useMemo(() => {
     if (!events) return [];
-    if (filter === 'All') return events;
-    if (filter === 'System') return events.filter((e) => e.kind === 'system');
-    // severity values are uppercase; filter labels are Title-case
-    const sev = filter.toUpperCase();
-    return events.filter((e) => e.severity !== 'SYSTEM' && e.severity === sev);
-  }, [events, filter]);
+    let list = events;
+    if (filter !== 'All') {
+      if (filter === 'System') list = list.filter((e) => e.kind === 'system');
+      else {
+        const sev = filter.toUpperCase();
+        list = list.filter((e) => e.severity !== 'SYSTEM' && e.severity === sev);
+      }
+    }
+    return [...list].sort((a, b) => {
+      const tA = new Date(a.timestamp).getTime();
+      const tB = new Date(b.timestamp).getTime();
+      return sortDir === 'asc' ? tA - tB : tB - tA;
+    });
+  }, [events, filter, sortDir]);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = { All: events?.length ?? 0, Critical: 0, High: 0, Medium: 0, Low: 0, System: 0 };
@@ -73,9 +83,15 @@ export function ActivityPage() {
         <div className="card-head" style={{ flexWrap: 'wrap', gap: 12 }}>
           <h3>Event Timeline</h3>
           <span className="demo-badge" style={{ fontSize: 9.5 }}><span className="dot" />DEMO DATA</span>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+              style={{ fontSize: 11.5, borderColor: 'var(--cyan-700)', color: 'var(--cyan-400)', fontWeight: 600 }}
+            >
+              {sortDir === 'desc' ? 'Time: Newest First ↓' : 'Time: Oldest First ↑'}
+            </button>
             <span className="demo-tag"><span className="dot" />Live indicator</span>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>now</span>
           </div>
         </div>
 

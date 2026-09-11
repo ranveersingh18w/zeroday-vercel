@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Trash2, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { alertService } from '../services';
-import type { Alert, Severity } from '../types';
+import type { Alert } from '../types';
 import { SeverityBadge, StatusPill } from '../components/Badge';
 import { AlertDetails } from '../components/AlertDetails';
 import { EmptyState, LoadingState, ErrorState } from '../components/States';
@@ -14,9 +14,6 @@ const TIME_FILTERS = ['All time', 'Last 24h', 'Last 7d', 'Last 30d'];
 const PROTOCOLS = ['All', 'TCP', 'UDP', 'TLS', 'DNS', 'ICMP'];
 const CONFIDENCE = ['All', '≥ 90%', '≥ 80%', '≥ 70%'];
 
-type SortKey = 'timestamp' | 'severity' | 'confidence';
-const SEV_RANK: Record<Severity, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
-
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [error, setError] = useState('');
@@ -26,8 +23,7 @@ export function AlertsPage() {
   const [time, setTime] = useState('All time');
   const [proto, setProto] = useState('All');
   const [conf, setConf] = useState('All');
-  const [sortKey, setSortKey] = useState<SortKey>('timestamp');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const toast = useToast();
@@ -54,13 +50,15 @@ export function AlertsPage() {
       rows = rows.filter((a) => a.confidence >= min);
     }
     if (cutoff) rows = rows.filter((a) => Date.now() - new Date(a.timestamp).getTime() <= cutoff * 3600000);
+    
+    // Sort strictly by Timestamp
     rows = [...rows].sort((a, b) => {
-      if (sortKey === 'timestamp') return sortDir === 'asc' ? new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() : new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      if (sortKey === 'severity') return sortDir === 'asc' ? SEV_RANK[a.severity] - SEV_RANK[b.severity] : SEV_RANK[b.severity] - SEV_RANK[a.severity];
-      return sortDir === 'asc' ? a.confidence - b.confidence : b.confidence - a.confidence;
+      const tA = new Date(a.timestamp).getTime();
+      const tB = new Date(b.timestamp).getTime();
+      return sortDir === 'asc' ? tA - tB : tB - tA;
     });
     return rows;
-  }, [alerts, search, threat, sev, time, proto, conf, sortKey, sortDir]);
+  }, [alerts, search, threat, sev, time, proto, conf, sortDir]);
 
   // Clamp current page to the valid range after filtering changes.
   useEffect(() => {
@@ -71,12 +69,9 @@ export function AlertsPage() {
   const pageRows = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
-  const toggleSort = (k: SortKey) => {
-    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortKey(k); setSortDir('desc'); }
+  const toggleTimestampSort = () => {
+    setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
   };
-
-  const toggleSortIcon = (k: SortKey) => k === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   const exportCsv = () => {
     const header = ['ID', 'Category', 'Severity', 'Source', 'Destination', 'Protocol', 'Confidence', 'Detected At', 'Status'];
@@ -143,6 +138,19 @@ export function AlertsPage() {
             <select className="select" value={conf} onChange={(e) => { setConf(e.target.value); setPage(0); }} aria-label="Confidence filter">
               {CONFIDENCE.map((c) => <option key={c}>{c}</option>)}
             </select>
+            <select
+              className="select"
+              style={{ borderColor: 'var(--cyan-700)', color: 'var(--cyan-400)', fontWeight: 600 }}
+              value={sortDir}
+              onChange={(e) => {
+                setSortDir(e.target.value as 'desc' | 'asc');
+                setPage(0);
+              }}
+              aria-label="Timestamp Sort"
+            >
+              <option value="desc">Timestamp: Newest First (Desc ↓)</option>
+              <option value="asc">Timestamp: Oldest First (Asc ↑)</option>
+            </select>
           </div>
           <span style={{ fontSize: 12.5, color: 'var(--muted)', marginLeft: 'auto' }}><b style={{ color: 'var(--ink)', fontFamily: 'var(--font-mono)' }}>{filtered.length}</b> alerts</span>
         </div>
@@ -161,8 +169,10 @@ export function AlertsPage() {
                   <th>Source</th>
                   <th>Destination</th>
                   <th>Protocol</th>
-                  <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('confidence')}>Confidence{toggleSortIcon('confidence')}</th>
-                  <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('timestamp')}>Detected At{toggleSortIcon('timestamp')}</th>
+                  <th>Confidence</th>
+                  <th style={{ cursor: 'pointer', color: 'var(--cyan-400)' }} onClick={toggleTimestampSort}>
+                    Detected At {sortDir === 'desc' ? '▼' : '▲'}
+                  </th>
                   <th>Status</th>
                 </tr>
               </thead>

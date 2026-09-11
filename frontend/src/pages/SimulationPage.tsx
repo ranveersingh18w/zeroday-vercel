@@ -194,19 +194,46 @@ export function SimulationPage() {
     addLog(`▶ Running scenario replay: ${sc.name}...`, 'info');
 
     const payload = generateAlertPayload(sc);
-    const ok = await insertSupabaseAlert(payload);
+    const res = await insertSupabaseAlert(payload);
 
-    if (ok) {
+    if (res.success) {
       setAlertsEmitted((a) => a + 1);
       setEventsProcessed((e) => e + 12);
       addLog(`✅ Supabase Insert Success: alert_id="${payload.alert_id}" (${sc.sihCategory})`, 'success');
       toast('success', `Inserted alert ${payload.alert_id} directly into Supabase!`);
     } else {
-      addLog(`❌ Failed to insert alert to Supabase`, 'error');
-      toast('error', `Failed to insert alert into Supabase.`);
+      const errDetail = res.error ? `: ${res.error}` : '';
+      addLog(`❌ Failed to insert alert to Supabase${errDetail}`, 'error');
+      toast('error', `Failed to insert alert into Supabase${errDetail}`);
     }
 
     setTimeout(() => setActiveScenario(null), 800);
+  };
+
+  const [logSortDir, setLogSortDir] = useState<'desc' | 'asc'>('desc');
+
+  const sendStreamTick = async (sc: ScenarioDef) => {
+    const payload1 = generateAlertPayload(sc);
+    const payload2 = generateAlertPayload(sc);
+    let res = await insertSupabaseAlert([payload1, payload2]);
+
+    // Fallback if batch insert has error
+    if (!res.success) {
+      const res1 = await insertSupabaseAlert(payload1);
+      const res2 = await insertSupabaseAlert(payload2);
+      if (res1.success || res2.success) {
+        res = { success: true };
+      }
+    }
+
+    if (res.success) {
+      setAlertsEmitted((a) => a + 2);
+      setEventsProcessed((e) => e + 30);
+      setEventsPerSec(Number((180 + Math.random() * 40).toFixed(1)));
+      addLog(`⚡ Stream Alert (2 rows inserted into Supabase): alert_id="${payload1.alert_id}", "${payload2.alert_id}"`, 'success');
+    } else {
+      addLog(`❌ Stream Alert failed: ${res.error || 'Unknown error'}`, 'error');
+    }
   };
 
   const toggleLiveStreaming = (sc: ScenarioDef) => {
@@ -222,21 +249,16 @@ export function SimulationPage() {
       if (timerRef.current) clearInterval(timerRef.current);
       setIsStreaming(true);
       setActiveScenario(sc.name);
-      addLog(`⚡ Live Streaming started for scenario: ${sc.name} (1 alert/2s)`, 'success');
-      toast('success', `Live Streaming started for ${sc.name}`);
+      addLog(`⚡ Live Streaming started for scenario: ${sc.name} (2 rows every 5s)`, 'success');
+      toast('success', `Live Streaming started for ${sc.name} (2 rows every 5s)`);
 
-      timerRef.current = setInterval(async () => {
-        const payload = generateAlertPayload(sc);
-        const ok = await insertSupabaseAlert(payload);
-        if (ok) {
-          setAlertsEmitted((a) => a + 1);
-          setEventsProcessed((e) => e + 15);
-          setEventsPerSec(Number((180 + Math.random() * 40).toFixed(1)));
-          addLog(`⚡ Stream Alert -> Supabase: alert_id="${payload.alert_id}"`, 'success');
-        } else {
-          addLog(`❌ Stream Alert failed`, 'error');
-        }
-      }, 2000);
+      // Trigger immediate first tick
+      sendStreamTick(sc);
+
+      // Repeat every 5 seconds
+      timerRef.current = setInterval(() => {
+        sendStreamTick(sc);
+      }, 5000);
     }
   };
 
@@ -252,13 +274,14 @@ export function SimulationPage() {
     e.preventDefault();
     setIsInserting(true);
 
-    const randomHex = Math.random().toString(36).substring(2, 10);
-    const alertId = `al-custom-${randomHex}`;
+    const timeStampHex = Date.now().toString(36);
+    const randomHex = Math.random().toString(36).substring(2, 8);
+    const alertId = `al-custom-${timeStampHex}-${randomHex}`;
 
     const payload = {
       alert_id: alertId,
       timestamp: new Date().toISOString(),
-      flow_id: `fl-custom-${randomHex}`,
+      flow_id: `fl-custom-${timeStampHex}-${randomHex}`,
       src_ip: customSrcIp,
       dst_ip: customDstIp,
       src_port: Math.floor(Math.random() * 50000) + 1024,
@@ -274,17 +297,18 @@ export function SimulationPage() {
       model_version: '1.0',
     };
 
-    const ok = await insertSupabaseAlert(payload);
+    const res = await insertSupabaseAlert(payload);
     setIsInserting(false);
 
-    if (ok) {
+    if (res.success) {
       setAlertsEmitted((a) => a + 1);
       setEventsProcessed((ev) => ev + 1);
-      addLog(`✅ Custom Alert Inserted: alert_id="${alertId}" (${customCategory})`, 'success');
+      addLog(`✅ Custom Alert Inserted (1 new row in Supabase): alert_id="${alertId}" (${customCategory})`, 'success');
       toast('success', `Custom alert ${alertId} inserted into Supabase!`);
     } else {
-      addLog(`❌ Custom Alert Insert Failed`, 'error');
-      toast('error', `Failed to insert custom alert into Supabase.`);
+      const errDetail = res.error ? `: ${res.error}` : '';
+      addLog(`❌ Custom Alert Insert Failed${errDetail}`, 'error');
+      toast('error', `Failed to insert custom alert into Supabase${errDetail}`);
     }
   };
 
@@ -460,15 +484,24 @@ export function SimulationPage() {
 
       {/* Live Simulation Audit Logs */}
       <div className="card">
-        <div className="card-head">
-          <h3>Simulation Live Supabase Audit Log</h3>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Real-time terminal output of inserted Supabase rows</span>
+        <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3>Simulation Live Supabase Audit Log</h3>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Real-time terminal output of inserted Supabase rows</span>
+          </div>
+          <button
+            className="btn btn-sm"
+            onClick={() => setLogSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+            style={{ fontSize: 11, padding: '4px 10px', borderColor: 'var(--cyan-700)', color: 'var(--cyan-400)' }}
+          >
+            {logSortDir === 'desc' ? 'Time: Newest First ↓' : 'Time: Oldest First ↑'}
+          </button>
         </div>
         <div style={{ padding: 16, background: '#090d16', fontFamily: 'var(--font-mono)', fontSize: 12, borderRadius: '0 0 10px 10px', minHeight: 160, maxHeight: 260, overflowY: 'auto' }}>
           {logs.length === 0 ? (
             <div style={{ color: 'var(--faint)', textAlign: 'center', padding: 20 }}>No simulation actions performed yet. Click "Replay" or "Stream" on any scenario.</div>
           ) : (
-            logs.map((l) => (
+            (logSortDir === 'desc' ? logs : [...logs].reverse()).map((l) => (
               <div key={l.id} style={{ marginBottom: 6, color: l.type === 'success' ? '#4ade80' : l.type === 'error' ? '#f87171' : 'var(--cyan-400)' }}>
                 <span style={{ color: 'var(--faint)', marginRight: 10 }}>[{l.time}]</span>
                 {l.message}

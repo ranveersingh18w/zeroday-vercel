@@ -2,11 +2,14 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Bell, Siren, Activity, Radar, BarChart3, Settings,
-  HeartPulse, ListChecks, PanelLeftClose, PanelLeftOpen, Zap,
+  HeartPulse, ListChecks, PanelLeftClose, PanelLeftOpen, Zap, Trash2, X,
 } from 'lucide-react';
 import { systemService } from '../services';
 import type { Notifications } from '../types';
 import { SeverityBadge } from './Badge';
+
+import { useToast } from './Toast';
+import { subscribeToSupabaseRealtime } from '../services/supabaseClient';
 
 interface NavEntry { to: string; label: string; icon: ReactNode; badge?: string }
 
@@ -73,29 +76,75 @@ function SidebarContent({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function NotificationPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [items, setItems] = useState<Notifications[]>([]);
-  useEffect(() => {
-    if (open && items.length === 0) systemService.notifications().then(setItems);
-  }, [open, items.length]);
+function NotificationPanel({
+  open,
+  items,
+  onClose,
+  onClear,
+  onDismiss,
+}: {
+  open: boolean;
+  items: Notifications[];
+  onClose: () => void;
+  onClear: () => void;
+  onDismiss: (id: string) => void;
+}) {
   if (!open) return null;
   return (
     <div className="popover" style={{ width: 340 }}>
       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <b style={{ fontSize: 13.5 }}>Notifications</b>
-        <span className="demo-badge" style={{ fontSize: 9.5 }}>LIVE</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <b style={{ fontSize: 13.5 }}>Notifications</b>
+          {items.length > 0 && (
+            <span style={{ fontSize: 11, background: 'rgba(34,211,238,0.15)', color: 'var(--cyan-400)', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>
+              {items.length}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {items.length > 0 && (
+            <button
+              className="btn btn-sm"
+              onClick={onClear}
+              style={{ fontSize: 11, padding: '2px 8px', height: 24, borderColor: 'rgba(239,68,68,0.4)', color: '#f87171', display: 'flex', alignItems: 'center', gap: 4 }}
+              title="Clear all notifications"
+            >
+              <Trash2 size={12} /> Clear
+            </button>
+          )}
+          <span className="demo-badge" style={{ fontSize: 9.5 }}>LIVE</span>
+        </div>
       </div>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-        {items.length === 0 && <div className="state-box" style={{ padding: 24 }}><p>Loading…</p></div>}
-        {items.map((n) => (
-          <div key={n.id} style={{ display: 'flex', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border-soft)', cursor: 'pointer', background: n.read ? 'transparent' : 'rgba(34,211,238,0.04)' }} onClick={onClose}>
-            <SeverityBadge severity={n.severity} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: 'var(--ink)' }}>{n.title}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--faint)' }}>{n.time}</div>
-            </div>
+        {items.length === 0 ? (
+          <div className="state-box" style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+            <p>No notifications.</p>
           </div>
-        ))}
+        ) : (
+          items.map((n) => (
+            <div
+              key={n.id}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--border-soft)', background: n.read ? 'transparent' : 'rgba(34,211,238,0.04)' }}
+            >
+              <SeverityBadge severity={n.severity} />
+              <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={onClose}>
+                <div style={{ fontSize: 13, color: 'var(--ink)' }}>{n.title}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--faint)' }}>{n.time}</div>
+              </div>
+              <button
+                className="icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDismiss(n.id);
+                }}
+                title="Dismiss notification"
+                style={{ width: 22, height: 22, opacity: 0.6 }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -103,6 +152,44 @@ function NotificationPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
 export function AppShell({ children, collapsed, setCollapsed }: { children: ReactNode; collapsed: boolean; setCollapsed: (v: boolean) => void }) {
   const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<Notifications[]>([]);
+  const toast = useToast();
+
+  useEffect(() => {
+    systemService.notifications().then(setNotifications).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const unsubscribe = subscribeToSupabaseRealtime((alert) => {
+      setUnreadCount((c) => c + 1);
+      setNotifications((prev) => [
+        {
+          id: alert.id,
+          title: `${alert.sihCategory} (${alert.severity})`,
+          severity: alert.severity,
+          time: 'Just now',
+          read: false,
+        },
+        ...prev,
+      ]);
+      toast('warning', `⚡ [Supabase Realtime] ${alert.severity}: ${alert.sihCategory} (${alert.id})`);
+
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(`🚨 ZERO-DAY Threat Alert: ${alert.severity}`, {
+            body: `${alert.sihCategory}\nSrc: ${alert.source.ip} → Dst: ${alert.destination.ip}`,
+          });
+        } catch (_) {}
+      }
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
 
   // useLocation is router-aware under HashRouter, so it reflects the active
   // hash route — unlike window.location.pathname which is always "/".
@@ -146,11 +233,22 @@ export function AppShell({ children, collapsed, setCollapsed }: { children: Reac
             </div>
             <div className="health-pill"><span className="pulse" />Monitoring active</div>
             <div style={{ position: 'relative' }}>
-              <button className="icon-btn" onClick={() => setNotifOpen(!notifOpen)} aria-label="Notifications">
+              <button className="icon-btn" onClick={() => { setNotifOpen(!notifOpen); setUnreadCount(0); }} aria-label="Notifications">
                 <Bell size={18} />
-                <span className="notif-dot" />
+                <span className="notif-dot" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, minWidth: 8, height: 8 }}>
+                  {unreadCount > 0 ? unreadCount : ''}
+                </span>
               </button>
-              <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
+              <NotificationPanel
+                open={notifOpen}
+                items={notifications}
+                onClose={() => setNotifOpen(false)}
+                onClear={() => {
+                  setNotifications([]);
+                  setUnreadCount(0);
+                }}
+                onDismiss={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+              />
             </div>
           </div>
         </header>

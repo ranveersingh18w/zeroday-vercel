@@ -39,8 +39,10 @@ class AlertDB:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self.supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
-        self.supabase_key = os.getenv("SUPABASE_KEY", "")
+        DEFAULT_URL = "https://czvjvwtvmyvajhlbwrud.supabase.co"
+        DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6dmp2d3R2bXl2YWpobGJ3cnVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDgxNzMsImV4cCI6MjEwNDU4NDE3M30.xNtvspUnHzaUGwD2DgHybHc64Xz52Ahd_dK3tcBvmjI"
+        self.supabase_url = os.getenv("SUPABASE_URL", DEFAULT_URL).rstrip("/")
+        self.supabase_key = os.getenv("SUPABASE_KEY", DEFAULT_KEY)
         self._init_schema()
         self._seed_if_empty()
 

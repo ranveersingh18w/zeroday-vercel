@@ -1,17 +1,21 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Alert } from '../types';
 
-// Read configuration from env or runtime defaults
+// Fallback defaults for ZERO-DAY project Supabase instance
+const DEFAULT_SUPABASE_URL = 'https://czvjvwtvmyvajhlbwrud.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6dmp2d3R2bXl2YWpobGJ3cnVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDgxNzMsImV4cCI6MjEwNDU4NDE3M30.xNtvspUnHzaUGwD2DgHybHc64Xz52Ahd_dK3tcBvmjI';
+
+// Read configuration from env, window, or runtime defaults
 const SUPABASE_URL: string =
   (import.meta as any).env?.VITE_SUPABASE_URL ||
   (window as any).__SUPABASE_URL__ ||
-  '';
+  DEFAULT_SUPABASE_URL;
 
 const SUPABASE_KEY: string =
   (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
   (import.meta as any).env?.VITE_SUPABASE_KEY ||
   (window as any).__SUPABASE_KEY__ ||
-  '';
+  DEFAULT_SUPABASE_KEY;
 
 export const isSupabaseConfigured = (): boolean => {
   return Boolean(SUPABASE_URL && SUPABASE_KEY);
@@ -117,23 +121,24 @@ export async function updateSupabaseAlertStatus(alertId: string, status: Alert['
 /**
  * Insert a single alert directly into Supabase
  */
-export async function insertSupabaseAlert(rawAlert: any): Promise<boolean> {
+export async function insertSupabaseAlert(rawAlert: any): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return false;
+  if (!client) return { success: false, error: 'Supabase client is not configured' };
 
   try {
+    const rows = Array.isArray(rawAlert) ? rawAlert : [rawAlert];
     const { error } = await client
       .from('alerts')
-      .insert([rawAlert]);
+      .insert(rows);
 
     if (error) {
       console.error('[Supabase] Error inserting alert:', error);
-      return false;
+      return { success: false, error: error.message || error.details || JSON.stringify(error) };
     }
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.error('[Supabase] Insert error:', err);
-    return false;
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
@@ -144,22 +149,30 @@ export function subscribeToSupabaseRealtime(onAlertReceived: (alert: Alert) => v
   const client = getSupabaseClient();
   if (!client) return () => {};
 
-  const channel = client
-    .channel('public:alerts')
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'alerts' },
-      (payload) => {
-        if (payload.new) {
-          onAlertReceived(mapSupabaseRowToAlert(payload.new));
+  try {
+    const channelId = `alerts-channel-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = client
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'alerts' },
+        (payload) => {
+          if (payload.new) {
+            onAlertReceived(mapSupabaseRowToAlert(payload.new));
+          }
         }
-      }
-    )
-    .subscribe();
+      )
+      .subscribe();
 
-  return () => {
-    client.removeChannel(channel);
-  };
+    return () => {
+      try {
+        client.removeChannel(channel);
+      } catch (_) {}
+    };
+  } catch (err) {
+    console.error('[Supabase Realtime] Subscription error:', err);
+    return () => {};
+  }
 }
 
 /**
