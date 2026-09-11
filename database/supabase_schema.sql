@@ -53,5 +53,5 @@ CREATE POLICY "Allow write access for authenticated users / backend"
     USING (true)
     WITH CHECK (true);
 
--- 4. Enable Realtime (optional: for live WebSocket updates directly from Supabase)
+-- 4. Enable Realtime (for live WebSocket updates directly from Supabase)
 ALTER PUBLICATION supabase_realtime ADD TABLE public.alerts;
