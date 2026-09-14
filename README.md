@@ -16,6 +16,7 @@
 | 🗄️ **[Database Construction & Schema](docs/DATABASE_CONSTRUCTION_GUIDE.md)** | Supabase PostgreSQL schema, table contracts (`alerts`, `metrics`, `health`), indices, and Row-Level Security. |
 | 🚨 **[How to Add Alerts — Ingestion API Guide](docs/HOW_TO_ADD_ALERTS.md)** | Complete guide to sending alerts via Python, JavaScript, cURL, or browser with zero required parameters. |
 | 📡 **[How to Fetch Alerts — Data Retrieval Guide](docs/HOW_TO_FETCH_ALERTS.md)** | Full guide and production code snippets for querying and streaming alerts across Python, JS, cURL, Go, Rust, C#, and WebSockets. |
+| 🎯 **[6 Threat Vectors Simulation Guide](docs/THREAT_SIMULATION_GUIDE.md)** | Ready-to-use commands for safely testing and triggering detections for all 6 SIH 26145 threat scenarios via CLI replay, API, and cURL. |
 | 🗄️ **[Supabase Data Insertion Guide](docs/SUPABASE_DATA_INSERTION.md)** | Step-by-step instructions for pushing alerts via REST APIs, Python ingest scripts, or the frontend simulator. |
 
 ---
