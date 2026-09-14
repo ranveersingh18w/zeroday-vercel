@@ -170,6 +170,62 @@ $body = @{
 Invoke-RestMethod -Uri "http://localhost:3000/api/create-alert" -Method Post -Body $body -ContentType "application/json"
 ```
 
+### F. Go
+```go
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	jsonData := []byte(`{"threat_class":"volumetric_ddos","severity":"CRITICAL","src_ip":"198.51.100.42"}`)
+	resp, err := http.Post("http://localhost:3000/api/create-alert", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	fmt.Println("Response status:", resp.Status)
+}
+```
+
+### G. Rust
+```rust
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let res = client.post("http://localhost:3000/api/create-alert")
+        .json(&serde_json::json!({
+            "threat_class": "botnet_c2_beacon",
+            "severity": "HIGH",
+            "src_ip": "10.0.0.50"
+        }))
+        .send()
+        .await?;
+    println!("Status: {}", res.status());
+    Ok(())
+}
+```
+
+### H. C# / .NET
+```csharp
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+
+class Program {
+    static async Task Main() {
+        using var client = new HttpClient();
+        var json = "{\"threat_class\":\"data_exfiltration\",\"severity\":\"CRITICAL\"}";
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("http://localhost:3000/api/create-alert", content);
+        System.Console.WriteLine(await response.Content.ReadAsStringAsync());
+    }
+}
+```
+
 ---
 
 ## 🔍 4. Reading Alerts via API
