@@ -34,3 +34,7 @@ frontend/.vite/
 
 # Don't ignore fixtures (they're demo data)
 !data/fixtures/
+
+# Local desktop workspaces
+zero-day-main/
+zeroday-cli/
